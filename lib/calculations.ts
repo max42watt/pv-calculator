@@ -221,7 +221,7 @@ export function calculateSystem(
 }
 
 export const defaultExpertSettings: ExpertSettings = {
-  pvYieldPerKwp: 1200,
+  pvYieldPerKwp: 1000,
   heatPumpJAZ: 4,
   baseAutarky: 30,
   batteryAutarkyBoost: 25,

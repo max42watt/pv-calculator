@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ExpertSettings, defaultExpertSettings } from '@/lib/calculations';
 
 export default function AdminPage() {
+  const [menuOpen, setMenuOpen] = useState(false);
   const [settings, setSettings] = useState<ExpertSettings>(defaultExpertSettings);
 
   useEffect(() => {
@@ -36,24 +37,86 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--color--light-grey)] py-12 px-4">
-      <div className="max-w-5xl mx-auto">
-        {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-bold text-[var(--color--dark-blue)] mb-2">
-              Admin Dashboard
-            </h1>
-            <p className="text-[var(--color--dark-grey)]">
-              Experteneinstellungen für Berechnungen
-            </p>
-          </div>
-          <Link
-            href="/"
-            className="px-6 py-3 bg-[var(--color--light-blue)] text-white font-bold rounded-lg hover:bg-[var(--color--dark-blue)] transition-colors"
-          >
-            Zur Kundenansicht
+    <div className="min-h-screen bg-[var(--color--light-grey)]">
+      {/* Header */}
+      <div className="bg-white border-b-2 border-[var(--color--medium-grey)] py-4 px-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <Link href="/">
+            <img src="/logo.svg" alt="42WATT Logo" className="h-12 cursor-pointer" />
           </Link>
+
+          {/* Desktop Navigation */}
+          <div className="hidden md:flex gap-3">
+            <Link
+              href="/"
+              className="px-4 py-2 bg-[var(--color--medium-grey)] text-[var(--color--dark-blue)] font-semibold rounded-lg hover:bg-[var(--color--dark-grey)] hover:text-white transition-colors"
+            >
+              PV-Rechner
+            </Link>
+            <Link
+              href="/kfw"
+              className="px-4 py-2 bg-[var(--color--medium-grey)] text-[var(--color--dark-blue)] font-semibold rounded-lg hover:bg-[var(--color--dark-grey)] hover:text-white transition-colors"
+            >
+              Förderrechner
+            </Link>
+            <Link
+              href="/admin"
+              className="px-4 py-2 bg-[var(--color--light-blue)] text-white font-semibold rounded-lg transition-colors"
+            >
+              Einstellungen
+            </Link>
+          </div>
+
+          {/* Mobile Burger Menu */}
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="md:hidden p-2 text-[var(--color--dark-blue)] hover:bg-[var(--color--light-grey)] rounded-lg transition-colors"
+            aria-label="Menu"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {menuOpen ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              )}
+            </svg>
+          </button>
+        </div>
+
+        {/* Mobile Menu Dropdown */}
+        {menuOpen && (
+          <div className="md:hidden mt-4 flex flex-col gap-2">
+            <Link
+              href="/"
+              className="px-4 py-2 bg-[var(--color--medium-grey)] text-[var(--color--dark-blue)] font-semibold rounded-lg hover:bg-[var(--color--dark-grey)] hover:text-white transition-colors text-center"
+            >
+              PV-Rechner
+            </Link>
+            <Link
+              href="/kfw"
+              className="px-4 py-2 bg-[var(--color--medium-grey)] text-[var(--color--dark-blue)] font-semibold rounded-lg hover:bg-[var(--color--dark-grey)] hover:text-white transition-colors text-center"
+            >
+              Förderrechner
+            </Link>
+            <Link
+              href="/admin"
+              className="px-4 py-2 bg-[var(--color--light-blue)] text-white font-semibold rounded-lg text-center"
+            >
+              Einstellungen
+            </Link>
+          </div>
+        )}
+      </div>
+
+      <div className="max-w-5xl mx-auto py-12 px-4">
+        {/* Title */}
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-[var(--color--dark-blue)] mb-2">
+            Einstellungen
+          </h1>
+          <p className="text-[var(--color--dark-grey)]">
+            Experteneinstellungen für PV & Wärmepumpe Rechner
+          </p>
         </div>
 
         {/* Settings Form */}
@@ -270,8 +333,8 @@ export default function AdminPage() {
             💡 Hinweis
           </h3>
           <p className="text-[var(--color--black)]">
-            Diese Einstellungen werden im Browser-Speicher gespeichert und gelten für alle
-            Berechnungen. Die Kundenansicht verwendet diese Werte automatisch.
+            Diese Einstellungen werden im Browser-Speicher gespeichert und gelten für den
+            PV & Wärmepumpe Rechner. Die Kundenansicht verwendet diese Werte automatisch.
           </p>
         </div>
       </div>
