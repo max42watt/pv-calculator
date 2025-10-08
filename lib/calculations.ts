@@ -127,22 +127,12 @@ export function calculateSystem(
     ? (selfConsumption * 0.05 * (customer.electricityPrice / 100))
     : 0;
 
-  // Cost of remaining grid electricity
-  const gridElectricityCost =
-    gridElectricity * (customer.electricityPrice / 100);
-
-  // Old electricity cost (if still using gas heating)
-  const oldElectricityCost =
-    customer.householdConsumption * (customer.electricityPrice / 100);
-
   // Total yearly savings (including heat pump vs gas comparison - calculated below)
   const yearlyTotalSavings =
     yearlyElectricitySavings + yearlyFeedInRevenue + emsBonusValue;
 
   // 7. Heating comparison over 10 years
   const heatingComparison = [];
-  let cumulativeGasCosts = 0;
-  let cumulativeHeatPumpCosts = 0;
 
   for (let year = 1; year <= 10; year++) {
     const yearNumber = 2025 + (year - 1);
@@ -159,8 +149,6 @@ export function calculateSystem(
       (gasBasePrice * gasInflation + co2TaxPerKwh) *
       customer.heatingConsumption;
 
-    cumulativeGasCosts += gasCosts;
-
     // Heat pump costs (electricity for heat pump)
     const electricityInflation = Math.pow(1 + expert.electricityPriceIncrease / 100, year - 1);
     const electricityPrice = (customer.electricityPrice / 100) * electricityInflation;
@@ -172,7 +160,6 @@ export function calculateSystem(
     );
 
     const heatPumpCosts = heatPumpGridElectricity * electricityPrice;
-    cumulativeHeatPumpCosts += heatPumpCosts;
 
     heatingComparison.push({
       year: yearNumber,

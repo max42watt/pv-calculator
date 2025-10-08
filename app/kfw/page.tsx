@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 
 interface FoerderInputs {
@@ -171,14 +171,14 @@ export default function WaermepumpenFoerderrechner() {
     const maxEligibleCosts = getMaxEligibleCosts(units);
     const eligibleCosts = Math.min(inputs.totalCosts, maxEligibleCosts);
 
-    let baseRate = CONFIG.RATES.base + bonuses.efficiency.rate;
-    let personalBonusRate = bonuses.speed.rate + bonuses.income.rate;
+    const baseRate = CONFIG.RATES.base + bonuses.efficiency.rate;
+    const personalBonusRate = bonuses.speed.rate + bonuses.income.rate;
 
-    let totalRate = baseRate + personalBonusRate;
+    const totalRate = baseRate + personalBonusRate;
     const maxRate = isSelfOccupier ? CONFIG.MAX_RATES.self_occupier : CONFIG.MAX_RATES.landlord;
     const finalRate = Math.min(totalRate, maxRate);
 
-    let calcResult: CalculationResult = {
+    const calcResult: CalculationResult = {
       eligibleCosts,
       finalRate,
       bonuses,
@@ -219,7 +219,7 @@ export default function WaermepumpenFoerderrechner() {
     setResult(calcResult);
   };
 
-  const handleInputChange = (field: keyof FoerderInputs, value: any) => {
+  const handleInputChange = (field: keyof FoerderInputs, value: string | number | boolean) => {
     setInputs((prev) => ({ ...prev, [field]: value }));
     setResult(null);
   };
@@ -742,7 +742,7 @@ export default function WaermepumpenFoerderrechner() {
               Förderfähige Kosten & Höchstgrenzen
             </h3>
             <p className="text-[var(--color--dark-grey)] mb-4">
-              Nicht nur die Wärmepumpe selbst, sondern auch viele notwendige Nebenarbeiten ("Umfeldmaßnahmen") sind förderfähig. Dazu zählen:
+              Nicht nur die Wärmepumpe selbst, sondern auch viele notwendige Nebenarbeiten (&quot;Umfeldmaßnahmen&quot;) sind förderfähig. Dazu zählen:
             </p>
             <ul className="space-y-2 mb-6">
               <li className="flex items-start gap-2">
@@ -832,7 +832,7 @@ export default function WaermepumpenFoerderrechner() {
               <li className="flex items-start gap-2">
                 <span className="text-[var(--color--green)] font-bold mt-0.5">✓</span>
                 <div>
-                  <strong>Antrag bei der KfW stellen:</strong> Mit der BzA registrieren Sie sich im Kundenportal "Meine KfW" und stellen dort den eigentlichen Förderantrag.
+                  <strong>Antrag bei der KfW stellen:</strong> Mit der BzA registrieren Sie sich im Kundenportal &quot;Meine KfW&quot; und stellen dort den eigentlichen Förderantrag.
                 </div>
               </li>
               <li className="flex items-start gap-2">
