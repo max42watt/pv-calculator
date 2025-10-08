@@ -167,7 +167,7 @@ export default function WaermepumpenFoerderrechner() {
     }
 
     const bonuses = determineBonuses(inputs);
-    const units = inputs.buildingType === 'single_family_home' ? 1 : inputs.residentialUnits;
+    const units = inputs.residentialUnits;
     const maxEligibleCosts = getMaxEligibleCosts(units);
     const eligibleCosts = Math.min(inputs.totalCosts, maxEligibleCosts);
 
@@ -185,10 +185,10 @@ export default function WaermepumpenFoerderrechner() {
       totalFunding: 0,
     };
 
-    if (
-      inputs.buildingType === 'condominium_assoc' ||
-      (inputs.buildingType === 'multi_family_home' && isSelfOccupier)
-    ) {
+    // Check if we need to split funding (multiple units with self-occupation)
+    const needsSplit = units > 1 && isSelfOccupier;
+
+    if (needsSplit) {
       const commonRate = CONFIG.RATES.base + bonuses.efficiency.rate;
       const commonFunding = eligibleCosts * (commonRate / 100);
 
@@ -353,20 +353,24 @@ export default function WaermepumpenFoerderrechner() {
                 </select>
               </div>
 
-              {(inputs.buildingType === 'multi_family_home' ||
-                inputs.buildingType === 'condominium_assoc') && (
+              {inputs.buildingType && (
                 <div>
                   <label className="block text-sm font-semibold text-[var(--color--black)] mb-2">
-                    Anzahl Wohneinheiten im Haus
+                    Anzahl Wohneinheiten
+                    {inputs.buildingType === 'single_family_home' && (
+                      <span className="text-sm font-normal text-[var(--color--dark-grey)] ml-2">
+                        (inkl. Einliegerwohnung)
+                      </span>
+                    )}
                   </label>
                   <input
                     type="number"
-                    min="2"
+                    min="1"
                     value={inputs.residentialUnits || ''}
                     onChange={(e) =>
                       handleInputChange('residentialUnits', parseInt(e.target.value) || 0)
                     }
-                    placeholder="z.B. 10"
+                    placeholder={inputs.buildingType === 'single_family_home' ? 'z.B. 1 oder 2' : 'z.B. 10'}
                     className="w-full px-4 py-3 border-2 border-[var(--color--medium-grey)] rounded-lg focus:border-[var(--color--light-blue)] focus:outline-none"
                   />
                 </div>
@@ -566,16 +570,54 @@ export default function WaermepumpenFoerderrechner() {
               <h4 className="text-sm font-semibold text-[var(--color--dark-grey)] uppercase tracking-wide mb-2">
                 {inputs.buildingType === 'condominium_assoc'
                   ? 'Ihr persönlicher Gesamtvorteil'
-                  : inputs.buildingType === 'multi_family_home' && isSelfOccupier
+                  : inputs.residentialUnits > 1 && isSelfOccupier
                   ? 'Gesamtförderung (Gemeinschaft + Ihr Bonus)'
                   : 'Voraussichtliche Gesamtförderung'}
               </h4>
               <div className="text-5xl font-bold text-[var(--color--green)]">
                 {formatCurrency(result.totalFunding)}
               </div>
+              {inputs.residentialUnits > 1 && (
+                <div className="text-sm text-[var(--color--dark-grey)] mt-3">
+                  Pro Wohneinheit: {formatCurrency(result.totalFunding / inputs.residentialUnits)}
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
+              {/* Show breakdown if split funding */}
+              {result.commonFunding !== undefined && result.personalFunding !== undefined && (
+                <div className="mb-4 p-4 bg-white rounded-lg border-2 border-[var(--color--light-blue)]">
+                  <div className="text-sm font-semibold text-[var(--color--dark-blue)] mb-3">
+                    Förderungsaufschlüsselung:
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-[var(--color--dark-grey)]">Gemeinschaftsförderung (Basis + Effizienz):</span>
+                      <span className="font-semibold">{formatCurrency(result.commonFunding)}</span>
+                    </div>
+                    {inputs.buildingType === 'condominium_assoc' && result.userShareOfCommon !== undefined && (
+                      <div className="flex justify-between pl-4 text-xs">
+                        <span className="text-[var(--color--dark-grey)]">Ihr Anteil ({inputs.ownershipShare}%):</span>
+                        <span className="font-semibold">{formatCurrency(result.userShareOfCommon)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-[var(--color--dark-grey)]">
+                        {inputs.buildingType === 'condominium_assoc' ? 'Ihr persönlicher Bonus:' : 'Persönliche Boni (pro WE):'}
+                      </span>
+                      <span className="font-semibold">{formatCurrency(result.personalFunding)}</span>
+                    </div>
+                    {inputs.residentialUnits > 1 && (
+                      <div className="flex justify-between pl-4 text-xs">
+                        <span className="text-[var(--color--dark-grey)]">Förderung pro Wohneinheit:</span>
+                        <span className="font-semibold">{formatCurrency(result.totalFunding / inputs.residentialUnits)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Basisförderung */}
               {inputs.buildingType === 'condominium_assoc' && result.userShareOfCommon !== undefined ? (
                 <div className="flex justify-between items-center py-3 px-4 bg-white bg-opacity-70 rounded-lg">
