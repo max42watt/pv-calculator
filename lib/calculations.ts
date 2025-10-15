@@ -18,6 +18,8 @@ export interface ExpertSettings {
   baseAutarky: number; // % without battery/EMS
   batteryAutarkyBoost: number; // % increase with battery
   emsAutarkyBoost: number; // % increase with EMS
+  emsHeatPumpPvCoverage: number; // % WP coverage from PV with EMS (default 70%)
+  emsMaxSelfConsumptionShare: number; // % max self-consumption to WP with EMS (default 75%)
   feedInTariff: number; // ct/kWh
   electricityPriceIncrease: number; // % per year
   gasPriceIncrease: number; // % per year
@@ -91,7 +93,7 @@ export function calculateSystem(
   // ✅ Exponentielles Sättigungsmodell (bildet abnehmenden Grenznutzen ab)
   // Kleine Speicher (2-4 kWh): Schneller Anstieg (~15-20%)
   // Mittlere Speicher (6-8 kWh): Abflachung (~22-24%)
-  // Große Speicher (10+ kWh): Sättigung bei ~25%
+  // Große Speicher (10+ kWh): Sättigung bei ~21.6%
   const batteryBoost = customer.batterySize > 0
     ? expert.batteryAutarkyBoost * (1 - Math.exp(-customer.batterySize / 5))
     : 0;
@@ -103,6 +105,19 @@ export function calculateSystem(
     expert.baseAutarky + batteryBoost + emsBoost,
     85 // Max 85% autarky (vorher 95%)
   );
+
+  // 🔍 DEBUG: Autarkie-Berechnung
+  if (typeof window !== 'undefined') {
+    console.group('🔍 Autarky Calculation');
+    console.log('Base Autarky:', expert.baseAutarky, '%');
+    console.log('Battery Size:', customer.batterySize, 'kWh');
+    console.log('Battery Boost:', batteryBoost.toFixed(1), '%', '(exponential saturation)');
+    console.log('EMS Active:', customer.hasEMS);
+    console.log('EMS Boost:', emsBoost, '%');
+    console.log('Total before cap:', (expert.baseAutarky + batteryBoost + emsBoost).toFixed(1), '%');
+    console.log('Final Autarky Rate:', autarkyRate, '%', '(max 85%)');
+    console.groupEnd();
+  }
 
   // Self-consumption: How much of PV is used directly
   // We assume the battery and EMS help to shift PV production to match consumption
@@ -129,6 +144,24 @@ export function calculateSystem(
 
   // Feed-in: Excess PV production
   const feedIn = Math.max(0, pvProduction - selfConsumption);
+
+  // 🔍 DEBUG: Log critical values
+  if (typeof window !== 'undefined') {
+    console.group('🔍 PV Calculator Debug');
+    console.log('Household:', customer.householdConsumption, 'kWh');
+    console.log('Heat Pump:', heatPumpConsumption, 'kWh (', customer.heatingConsumption, '/', expert.heatPumpJAZ, ')');
+    console.log('E-Car:', eCarConsumption, 'kWh');
+    console.log('Total Demand:', totalElectricityDemand, 'kWh');
+    console.log('PV Production:', pvProduction, 'kWh');
+    console.log('Autarky Rate:', autarkyRate, '%');
+    console.log('Self Consumption:', selfConsumption, 'kWh');
+    console.log('Grid Electricity:', gridElectricity, 'kWh');
+    console.log('Feed In:', feedIn, 'kWh');
+    console.log('Electricity Price:', customer.electricityPrice, 'ct/kWh');
+    console.log('Electricity Price Increase:', expert.electricityPriceIncrease, '%');
+    console.log('Gas Price Increase:', expert.gasPriceIncrease, '%');
+    console.groupEnd();
+  }
 
   // 6. Annual savings
   const yearlyElectricitySavings =
@@ -176,9 +209,37 @@ export function calculateSystem(
     const electricityPrice = (customer.electricityPrice / 100) * electricityInflation;
 
     // Heat pump uses electricity from grid (part not covered by PV)
+    // 🔄 EMS macht intelligente Allokation: Priorisiert WP mit PV-Strom
+    let heatPumpSelfConsumption;
+    let householdSelfConsumption;
+
+    if (customer.hasEMS) {
+      // MIT EMS: WP bekommt max. X% ihres Bedarfs aus PV (einstellbar)
+      // Begründung: WP läuft hauptsächlich Winter (wenig PV), auch mit EMS-Optimierung
+      // Doppelte Begrenzung für Realismus:
+
+      // Fallback für alte Einstellungen ohne neue Felder
+      const wpPvCoverage = expert.emsHeatPumpPvCoverage || 70;
+      const maxSelfConsShare = expert.emsMaxSelfConsumptionShare || 75;
+
+      heatPumpSelfConsumption = Math.min(
+        heatPumpConsumption * (wpPvCoverage / 100),           // Max X% der WP-Last aus PV
+        selfConsumption * (maxSelfConsShare / 100)            // Max Y% des Eigenverbrauchs zur WP
+      );
+
+      // Rest geht an Haushalt und E-Auto
+      householdSelfConsumption = selfConsumption - heatPumpSelfConsumption;
+
+    } else {
+      // OHNE EMS: Proportionale Verteilung - alle Verbraucher gleichberechtigt
+      const proportion = selfConsumption / totalElectricityDemand;
+      heatPumpSelfConsumption = heatPumpConsumption * proportion;
+      householdSelfConsumption = (customer.householdConsumption + eCarConsumption) * proportion;
+    }
+
     const heatPumpGridElectricity = Math.max(
       0,
-      heatPumpConsumption - (selfConsumption * (heatPumpConsumption / totalElectricityDemand))
+      heatPumpConsumption - heatPumpSelfConsumption
     );
 
     const heatPumpCosts = heatPumpGridElectricity * electricityPrice;
@@ -189,6 +250,28 @@ export function calculateSystem(
       heatPumpCosts: Math.round(heatPumpCosts),
       savings: Math.round(gasCosts - heatPumpCosts),
     });
+
+    // 🔍 DEBUG: Log first year heating comparison
+    if (year === 1 && typeof window !== 'undefined') {
+      console.group('🔍 Heating Comparison Year 1');
+      console.log('EMS Active:', customer.hasEMS);
+      console.log('---');
+      console.log('Gas Base Price:', customer.gasPrice, 'ct/kWh');
+      console.log('CO2 Tax:', co2TaxPerKwh.toFixed(4), '€/kWh');
+      console.log('Gas Costs:', Math.round(gasCosts), '€');
+      console.log('---');
+      console.log('Heat Pump Consumption:', heatPumpConsumption, 'kWh');
+      console.log('Heat Pump from PV:', Math.round(heatPumpSelfConsumption), 'kWh',
+        `(${Math.round((heatPumpSelfConsumption / heatPumpConsumption) * 100)}%)`);
+      console.log('Heat Pump from Grid:', Math.round(heatPumpGridElectricity), 'kWh');
+      console.log('Electricity Price:', Math.round(electricityPrice * 100), 'ct/kWh');
+      console.log('Heat Pump Costs:', Math.round(heatPumpCosts), '€');
+      console.log('---');
+      console.log('Household from PV:', Math.round(householdSelfConsumption), 'kWh');
+      console.log('---');
+      console.log('Annual Heating Savings:', Math.round(gasCosts - heatPumpCosts), '€');
+      console.groupEnd();
+    }
   }
 
   // 8. Amortization
@@ -306,7 +389,9 @@ export const defaultExpertSettings: ExpertSettings = {
   heatPumpJAZ: 4,
   baseAutarky: 30,
   batteryAutarkyBoost: 25,
-  emsAutarkyBoost: 15,
+  emsAutarkyBoost: 12, // ✅ Konservativ reduziert von 15% auf 12%
+  emsHeatPumpPvCoverage: 70, // ✅ WP bekommt max. 70% ihrer Last aus PV mit EMS
+  emsMaxSelfConsumptionShare: 75, // ✅ Max 75% des Eigenverbrauchs kann zur WP gehen
   feedInTariff: 7.86, // ✅ Aktualisiert auf Aug 2025 Teileinspeisung bis 10 kWp
   electricityPriceIncrease: 1.25, // ✅ Korrigiert: BMWK-Prognose (vorher 3%)
   gasPriceIncrease: 2,
