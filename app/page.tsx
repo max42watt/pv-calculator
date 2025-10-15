@@ -8,6 +8,8 @@ import {
   defaultExpertSettings,
   calculateSystem,
   CalculationResults,
+  co2Scenarios,
+  calculateHeatingScenario,
 } from '@/lib/calculations';
 
 export default function Home() {
@@ -374,13 +376,6 @@ export default function Home() {
                       </span>
                     </div>
 
-                    <div className="flex justify-between items-center py-2 border-b border-[var(--color--light-grey)]">
-                      <span className="text-[var(--color--black)]">Heizkosten gespart (WP vs. Gas)</span>
-                      <span className="font-bold text-[var(--color--green)]">
-                        {results.yearlyHeatingSavings.toLocaleString('de-DE')} €
-                      </span>
-                    </div>
-
                     {customerInputs.hasEMS && results.emsBonus > 0 && (
                       <div className="flex justify-between items-center py-2 border-b border-[var(--color--light-grey)]">
                         <span className="text-[var(--color--black)]">EMS-Optimierung</span>
@@ -390,6 +385,13 @@ export default function Home() {
                       </div>
                     )}
 
+                    <div className="flex justify-between items-center py-2 border-b border-[var(--color--light-grey)]">
+                      <span className="text-[var(--color--black)]">Heizkosten gespart (WP vs. Gas)</span>
+                      <span className="font-bold text-[var(--color--green)]">
+                        {results.yearlyHeatingSavings.toLocaleString('de-DE')} €
+                      </span>
+                    </div>
+
                     <div className="flex justify-between items-center py-3 bg-[var(--color--light-green)] rounded-lg px-4 mt-4">
                       <span className="font-bold text-[var(--color--black)]">
                         Gesamtersparnis pro Jahr
@@ -398,6 +400,83 @@ export default function Home() {
                         {results.yearlyTotalSavings.toLocaleString('de-DE')} €
                       </span>
                     </div>
+                  </div>
+                </div>
+
+                {/* CO₂ Scenarios Comparison */}
+                <div className="bg-white rounded-2xl shadow-lg p-6">
+                  <h3 className="text-2xl font-bold text-[var(--color--dark-blue)] mb-4">
+                    CO₂-Steuer Szenarien: Gasheizung Kostensteigerung
+                  </h3>
+
+                  <p className="text-sm text-[var(--color--dark-grey)] mb-6">
+                    Die Entwicklung der CO₂-Steuer beeinflusst Ihre Gasheizungskosten stark.
+                    Hier sehen Sie 3 Szenarien basierend auf politischen Prognosen:
+                  </p>
+
+                  {(() => {
+                    const conservativeScenario = calculateHeatingScenario(customerInputs, expertSettings, co2Scenarios.conservative);
+                    const moderateScenario = calculateHeatingScenario(customerInputs, expertSettings, co2Scenarios.moderate);
+                    const aggressiveScenario = calculateHeatingScenario(customerInputs, expertSettings, co2Scenarios.aggressive);
+
+                    const years = [2025, 2027, 2030];
+
+                    return (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b-2 border-[var(--color--medium-grey)]">
+                              <th className="text-left py-3 px-2 font-semibold text-[var(--color--dark-blue)]">Jahr</th>
+                              <th className="text-right py-3 px-2 font-semibold text-green-700">Konservativ</th>
+                              <th className="text-right py-3 px-2 font-semibold text-orange-600">Moderat (Standard)</th>
+                              <th className="text-right py-3 px-2 font-semibold text-red-700">Aggressiv</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {years.map(year => {
+                              const conservative = conservativeScenario.find(s => s.year === year);
+                              const moderate = moderateScenario.find(s => s.year === year);
+                              const aggressive = aggressiveScenario.find(s => s.year === year);
+
+                              return (
+                                <tr key={year} className="border-b border-[var(--color--light-grey)]">
+                                  <td className="py-3 px-2 font-semibold">{year}</td>
+                                  <td className="text-right py-3 px-2 text-green-700">
+                                    {conservative?.gasCosts.toLocaleString('de-DE')} €
+                                  </td>
+                                  <td className="text-right py-3 px-2 font-semibold text-orange-600">
+                                    {moderate?.gasCosts.toLocaleString('de-DE')} €
+                                  </td>
+                                  <td className="text-right py-3 px-2 text-red-700">
+                                    {aggressive?.gasCosts.toLocaleString('de-DE')} €
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            <tr className="bg-[var(--color--light-grey)] font-bold">
+                              <td className="py-3 px-2">Gesamt (2025-2030)</td>
+                              <td className="text-right py-3 px-2 text-green-700">
+                                {conservativeScenario.slice(0, 6).reduce((sum, s) => sum + s.gasCosts, 0).toLocaleString('de-DE')} €
+                              </td>
+                              <td className="text-right py-3 px-2 text-orange-600">
+                                {moderateScenario.slice(0, 6).reduce((sum, s) => sum + s.gasCosts, 0).toLocaleString('de-DE')} €
+                              </td>
+                              <td className="text-right py-3 px-2 text-red-700">
+                                {aggressiveScenario.slice(0, 6).reduce((sum, s) => sum + s.gasCosts, 0).toLocaleString('de-DE')} €
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()}
+
+                  <div className="mt-6 p-4 bg-[var(--color--light-blue)] bg-opacity-10 rounded-lg border-2 border-[var(--color--light-blue)]">
+                    <p className="text-sm text-[var(--color--black)]">
+                      <strong>💡 Mit Wärmepumpe:</strong> Sie sparen diese steigenden Gaskosten komplett
+                      und zahlen nur noch günstigeren Strom (teilweise aus eigener PV-Anlage).
+                      Die Berechnung oben verwendet das <strong>moderate Szenario</strong> als Standard.
+                    </p>
                   </div>
                 </div>
 

@@ -87,23 +87,39 @@ export function calculateSystem(
 
   // 5. Self-consumption calculation
   // Base autarky + increase from battery and/or EMS
+
+  // ✅ Exponentielles Sättigungsmodell (bildet abnehmenden Grenznutzen ab)
+  // Kleine Speicher (2-4 kWh): Schneller Anstieg (~15-20%)
+  // Mittlere Speicher (6-8 kWh): Abflachung (~22-24%)
+  // Große Speicher (10+ kWh): Sättigung bei ~25%
   const batteryBoost = customer.batterySize > 0
-    ? expert.batteryAutarkyBoost * Math.min(customer.batterySize / 10, 1) // Scale up to 10 kWh
+    ? expert.batteryAutarkyBoost * (1 - Math.exp(-customer.batterySize / 5))
     : 0;
 
   const emsBoost = customer.hasEMS ? expert.emsAutarkyBoost : 0;
 
+  // ✅ Max-Autarkie auf 85% gedeckelt (realistisch für Jahresbilanz mit Winter-Defiziten)
   const autarkyRate = Math.min(
     expert.baseAutarky + batteryBoost + emsBoost,
-    95 // Max 95% autarky (realistic limit)
+    85 // Max 85% autarky (vorher 95%)
   );
 
   // Self-consumption: How much of PV is used directly
   // We assume the battery and EMS help to shift PV production to match consumption
-  const selfConsumption = Math.min(
+  let selfConsumption = Math.min(
     pvProduction,
     totalElectricityDemand * (autarkyRate / 100)
   );
+
+  // ✅ Speicherverluste berücksichtigen (10% Round-Trip-Verluste)
+  if (customer.batterySize > 0) {
+    const batteryUsage = Math.min(
+      customer.batterySize * 365, // Maximale jährliche Nutzung (1x täglich)
+      selfConsumption * 0.6 // Schätzung: 60% des Eigenverbrauchs läuft über Speicher
+    );
+    const batteryLosses = batteryUsage * 0.10; // 10% Verluste (konservativ)
+    selfConsumption -= batteryLosses;
+  }
 
   // Self-consumption rate: % of PV that is used
   const selfConsumptionRate = (selfConsumption / pvProduction) * 100;
@@ -121,15 +137,21 @@ export function calculateSystem(
   const yearlyFeedInRevenue =
     feedIn * (expert.feedInTariff / 100);
 
-  // EMS bonus calculation (if EMS is enabled)
-  // EMS helps optimize consumption patterns, worth about 5-10% additional savings
-  const emsBonusValue = customer.hasEMS
-    ? (selfConsumption * 0.05 * (customer.electricityPrice / 100))
-    : 0;
+  // ✅ EMS-Bonus: Zeigt den finanziellen Wert der 15% zusätzlichen Autarkie
+  // Berechnung: Zusätzlicher Eigenverbrauch durch EMS × Strompreis
+  let emsBonus = 0;
+  if (customer.hasEMS) {
+    // Zusätzlicher Eigenverbrauch durch EMS
+    const additionalSelfConsumption = Math.min(
+      pvProduction,
+      totalElectricityDemand * (emsBoost / 100)
+    );
+    emsBonus = additionalSelfConsumption * (customer.electricityPrice / 100);
+  }
 
   // Total yearly savings (including heat pump vs gas comparison - calculated below)
   const yearlyTotalSavings =
-    yearlyElectricitySavings + yearlyFeedInRevenue + emsBonusValue;
+    yearlyElectricitySavings + yearlyFeedInRevenue;
 
   // 7. Heating comparison over 10 years
   const heatingComparison = [];
@@ -189,7 +211,7 @@ export function calculateSystem(
   return {
     yearlyElectricitySavings: Math.round(yearlyElectricitySavings),
     yearlyFeedInRevenue: Math.round(yearlyFeedInRevenue),
-    emsBonus: Math.round(emsBonusValue),
+    emsBonus: Math.round(emsBonus),
     yearlyHeatingSavings: Math.round(averageHeatingsSavings),
     yearlyTotalSavings: Math.round(totalYearlySavingsIncludingHeating),
     pvProduction: Math.round(pvProduction),
@@ -207,26 +229,87 @@ export function calculateSystem(
   };
 }
 
+// CO₂-Steuer Szenarien
+export const co2Scenarios = {
+  conservative: [
+    { year: 2025, pricePerTon: 55 },
+    { year: 2026, pricePerTon: 58 },
+    { year: 2027, pricePerTon: 61 },
+    { year: 2028, pricePerTon: 64 },
+    { year: 2029, pricePerTon: 67 },
+    { year: 2030, pricePerTon: 70 },
+    { year: 2031, pricePerTon: 73 },
+    { year: 2032, pricePerTon: 76 },
+    { year: 2033, pricePerTon: 79 },
+    { year: 2034, pricePerTon: 82 },
+  ],
+  moderate: [
+    { year: 2025, pricePerTon: 55 },
+    { year: 2026, pricePerTon: 60 },
+    { year: 2027, pricePerTon: 68 },
+    { year: 2028, pricePerTon: 76 },
+    { year: 2029, pricePerTon: 84 },
+    { year: 2030, pricePerTon: 92 },
+    { year: 2031, pricePerTon: 96 },
+    { year: 2032, pricePerTon: 100 },
+    { year: 2033, pricePerTon: 100 },
+    { year: 2034, pricePerTon: 100 },
+  ],
+  aggressive: [
+    { year: 2025, pricePerTon: 55 },
+    { year: 2026, pricePerTon: 65 },
+    { year: 2027, pricePerTon: 80 },
+    { year: 2028, pricePerTon: 95 },
+    { year: 2029, pricePerTon: 110 },
+    { year: 2030, pricePerTon: 125 },
+    { year: 2031, pricePerTon: 135 },
+    { year: 2032, pricePerTon: 145 },
+    { year: 2033, pricePerTon: 155 },
+    { year: 2034, pricePerTon: 165 },
+  ],
+};
+
+// Hilfsfunktion: Berechnet Heizkosten für ein bestimmtes CO₂-Szenario
+export function calculateHeatingScenario(
+  customer: CustomerInputs,
+  expert: ExpertSettings,
+  co2Schedule: { year: number; pricePerTon: number }[],
+  years: number = 10
+) {
+  const comparison = [];
+
+  for (let year = 1; year <= years; year++) {
+    const yearNumber = 2025 + (year - 1);
+
+    const co2Tax = co2Schedule.find(s => s.year === yearNumber);
+    const co2TaxPerKwh = co2Tax
+      ? (expert.co2EmissionsGas * co2Tax.pricePerTon) / 1000
+      : 0;
+
+    const gasInflation = Math.pow(1 + expert.gasPriceIncrease / 100, year - 1);
+    const gasBasePrice = customer.gasPrice / 100;
+    const gasCosts =
+      (gasBasePrice * gasInflation + co2TaxPerKwh) *
+      customer.heatingConsumption;
+
+    comparison.push({
+      year: yearNumber,
+      gasCosts: Math.round(gasCosts),
+    });
+  }
+
+  return comparison;
+}
+
 export const defaultExpertSettings: ExpertSettings = {
   pvYieldPerKwp: 1000,
   heatPumpJAZ: 4,
   baseAutarky: 30,
   batteryAutarkyBoost: 25,
   emsAutarkyBoost: 15,
-  feedInTariff: 8.0,
-  electricityPriceIncrease: 3,
+  feedInTariff: 7.86, // ✅ Aktualisiert auf Aug 2025 Teileinspeisung bis 10 kWp
+  electricityPriceIncrease: 1.25, // ✅ Korrigiert: BMWK-Prognose (vorher 3%)
   gasPriceIncrease: 2,
-  co2TaxSchedule: [
-    { year: 2025, pricePerTon: 50 },
-    { year: 2026, pricePerTon: 65 },
-    { year: 2027, pricePerTon: 80 },
-    { year: 2028, pricePerTon: 95 },
-    { year: 2029, pricePerTon: 110 },
-    { year: 2030, pricePerTon: 125 },
-    { year: 2031, pricePerTon: 140 },
-    { year: 2032, pricePerTon: 155 },
-    { year: 2033, pricePerTon: 170 },
-    { year: 2034, pricePerTon: 185 },
-  ],
-  co2EmissionsGas: 0.2,
+  co2TaxSchedule: co2Scenarios.moderate, // ✅ Moderate Szenario (Standard)
+  co2EmissionsGas: 0.24, // ✅ Korrigiert: 0.24 kg CO₂/kWh (vorher 0.2)
 };
